@@ -34,6 +34,9 @@ USE_ALL_AS_UNLABLED = False
 class VOCDetection(DatasetSplit):
   # handle a few special splits whose names do not match the directory names
   _INSTANCE_TO_BASEDIR = {
+      'train': 'JPEGImages',
+      'test': 'JPEGImages',
+
       'VOC2007/instances_trainval': 'VOC2007/JPEGImages',
       'VOC2007/instances_test': 'VOC2007/JPEGImages',
       'VOC2012/instances_trainval': 'VOC2012/JPEGImages'
@@ -59,7 +62,7 @@ class VOCDetection(DatasetSplit):
 
     basedir = os.path.expanduser(basedir)
     self._imgdir = os.path.realpath(
-        os.path.join(basedir, self._INSTANCE_TO_BASEDIR.get(split, split)))
+        os.path.join(basedir, self._INSTANCE_TO_BASEDIR.get(split, 'JPEGImages')))#默认返回'JPEGImages'
     assert os.path.isdir(self._imgdir), '{} is not a directory!'.format(
         self._imgdir)
     annotation_file = os.path.join(basedir, '{}.json'.format(split))
@@ -221,7 +224,7 @@ class VOCDetection(DatasetSplit):
   def inference_roidbs(self):
     return self.load(add_gt=False)
 
-  def eval_inference_results(self, results, output=None):
+  def eval_inference_results(self, results, output=None,flagOut=False):
     continuous_id_to_COCO_id = {
         v: k for k, v in self.COCO_id_to_category_id.items()
     }
@@ -260,16 +263,34 @@ def register_voc(basedir):
   #    "boat", "cat", "dog", "person", "tvmonitor", "sofa", "car", "bird", "horse", "pottedplant", "bicycle", "chair", "bottle", "cow", "aeroplane", "train", "sheep", "diningtable", "bus", "motorbike"]  # noqa
   #class_names = [
   #     "person", "chair", "aeroplane", "bus", "cow", "bird", "motorbike", "boat", "car", "horse", "sofa", "pottedplant", "tvmonitor", "cat", "train", "bottle", "diningtable", "dog", "bicycle", "sheep"]
-  class_names = [
-      'motorbike', 'dog', 'person', 'horse', 'sofa', 'bicycle', 'cow', 'boat',
-      'train', 'car', 'bird', 'cat', 'chair', 'pottedplant', 'sheep',
-      'aeroplane', 'bottle', 'bus', 'diningtable', 'tvmonitor'
+  # class_names = [
+  #     'motorbike', 'dog', 'person', 'horse', 'sofa', 'bicycle', 'cow', 'boat',
+  #     'train', 'car', 'bird', 'cat', 'chair', 'pottedplant', 'sheep',
+  #     'aeroplane', 'bottle', 'bus', 'diningtable', 'tvmonitor'
+  # ]
+  class_names=[     'passenger ship',  # 1
+                    'ore carrier',  # 2
+                    'general cargo ship',  # 3
+                    'fishing boat',  # 4
+                    'Sail boat',  # 5
+                    'Kayak',  # 6
+                    'flying bird',  # flying bird/plane #7
+                    'vessel',  # vessel/ship #8
+                    'Buoy',  # 9
+                    'Ferry',  # 10
+                    'container ship',  # 11
+                    'Other',  # 12
+                    'Boat',  # 13
+                    'Speed boat',  # 14
+                    'bulk cargo carrier',  # 15
   ]
-  class_names = ['BG'] + class_names
 
+  class_names = ['BG'] + class_names
+  instances_cocostyle='voc_cocostyle'
   for split in [
-      'VOC2007/instances_trainval', 'VOC2007/instances_test',
-      'VOC2012/instances_trainval'
+      instances_cocostyle+'train', instances_cocostyle+'test',instances_cocostyle+'test1283', instances_cocostyle+'all',
+    instances_cocostyle+'label0', instances_cocostyle+'label1',instances_cocostyle+'label2',instances_cocostyle+'label3',
+    instances_cocostyle + 'unlabel0', instances_cocostyle + 'unlabel1', instances_cocostyle + 'unlabel2',instances_cocostyle + 'train_SMD',instances_cocostyle + 'train_SeaShips'
   ]:
     name = split
     DatasetRegistry.register(name, lambda x=split: VOCDetection(basedir, x))

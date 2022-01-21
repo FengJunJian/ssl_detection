@@ -23,7 +23,8 @@ from .common import CustomResize, clip_boxes
 from .config import config as cfg
 from .data import get_eval_dataflow
 from .dataset import DatasetRegistry
-
+from tqdm import tqdm
+from utils.draw import mydraw#write_detection_batch,
 try:
   import horovod.tensorflow as hvd
 except ImportError:
@@ -164,7 +165,7 @@ def predict_image(img, model_func):
   return results
 
 
-def predict_dataflow(df, model_func, tqdm_bar=None):
+def predict_dataflow(df, model_func, tqdm_bar=None,):
   """
     Args:
         df: a DataFlow which produces (image, image_id)
@@ -181,10 +182,13 @@ def predict_dataflow(df, model_func, tqdm_bar=None):
   all_results = []
   with ExitStack() as stack:
     # tqdm is not quite thread-safe: https://github.com/tqdm/tqdm/issues/323
-    if tqdm_bar is None:
-      tqdm_bar = stack.enter_context(get_tqdm(total=df.size()))
-    for img, img_id in df:
+    # if tqdm_bar is None:
+    #   tqdm_bar = stack.enter_context(get_tqdm(total=df.size()))
+    for img, img_id in tqdm(df):
       results = predict_image(img, model_func)
+      # im1=write_detection_batch(img,results)
+      # cv2.imshow('a',im1)
+      # cv2.waitKey(1)
       for r in results:
         # int()/float() to make it json-serializable
 
@@ -215,9 +219,69 @@ def predict_dataflow(df, model_func, tqdm_bar=None):
             res['segmentation'] = rle
 
         all_results.append(res)
-      tqdm_bar.update(1)
+      #tqdm_bar.update(1)
   return all_results
 
+def predict_dataflow_im(df, model_func, imoutputDir):
+  """
+    Args:
+        df: a DataFlow which produces (image, image_id)
+        model_func: a callable from the TF model. It takes image and returns
+          (boxes, probs, labels, [masks])
+        tqdm_bar: a tqdm object to be shared among multiple evaluation
+          instances. If None, will create a new one.
+
+    Returns:
+        list of dict, in the format used by
+        `DatasetSplit.eval_inference_results`
+    """
+
+  df.reset_state()
+  all_results = []
+  detectionDraw=mydraw()
+  with ExitStack() as stack:
+    # tqdm is not quite thread-safe: https://github.com/tqdm/tqdm/issues/323
+    # if tqdm_bar is None:
+    #   tqdm_bar = stack.enter_context(get_tqdm(total=df.size()))
+    for img, img_id,im_name in tqdm(df):
+      results = predict_image(img, model_func)
+      # im1=write_detection_batch(img,results)
+      im1=detectionDraw.drawPIL(img,results)
+      detectionDraw.write(os.path.join(imoutputDir,im_name),im1)
+      # cv2.imshow('a',im1)
+      # cv2.waitKey(1)
+      for r in results:
+        # int()/float() to make it json-serializable
+
+        # adding new outputs
+        if hasattr(r, 'proposal_box'):
+          res = {
+              'image_id': img_id,
+              'category_id': r.class_id,
+              'bbox': r.box,
+              'score': r.score,
+          }
+          res.update({
+              'proposal_box': r.proposal_box,
+              'proposal_score': r.proposal_score,
+              'frcnn_score': r.frcnn_score
+          })
+        else:
+          res = {
+              'image_id': img_id,
+              'category_id': int(r.class_id),
+              'bbox': [round(float(x), 4) for x in r.box],
+              'score': round(float(r.score), 4),
+          }
+          # also append segmentation to results
+          if r.mask is not None:
+            rle = cocomask.encode(np.array(r.mask[:, :, None], order='F'))[0]
+            rle['counts'] = rle['counts'].decode('ascii')
+            res['segmentation'] = rle
+
+        all_results.append(res)
+      #tqdm_bar.update(1)
+  return all_results
 
 def multithread_predict_dataflow(dataflows, model_funcs):
   """
@@ -246,6 +310,26 @@ def multithread_predict_dataflow(dataflows, model_funcs):
       futures.append(executor.submit(predict_dataflow, dataflow, pred, pbar))
     all_results = list(itertools.chain(*[fut.result() for fut in futures]))
     return all_results
+
+def multithread_predict_dataflow_im(dataflows, model_funcs,imoutput):
+  """
+    Running multiple `predict_dataflow` in multiple threads, and aggregate the
+    results.
+
+    Args:
+        dataflows: a list of DataFlow to be used in :func:`predict_dataflow`
+        model_funcs: a list of callable to be used in :func:`predict_dataflow`
+
+    Returns:
+        list of dict, in the format used by
+        `DatasetSplit.eval_inference_results`
+    """
+  num_worker = len(model_funcs)
+  assert len(dataflows) == num_worker
+  #if num_worker == 1:
+  if not os.path.exists(imoutput):
+    os.mkdir(imoutput)
+  return predict_dataflow_im(dataflows[0], model_funcs[0],imoutput)
 
 
 class EvalCallback(Callback):

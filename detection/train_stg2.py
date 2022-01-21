@@ -16,6 +16,10 @@
 # pylint: disable=redefined-outer-name
 # pylint: disable=redefined-builtin
 # pylint: disable=unused-variable
+import sys
+sys.path.append('E:\SSL\ssl_detection-master/third_party\FasterRCNN')
+sys.path.append('E:\SSL\ssl_detection-master/third_party/auto_augment')
+sys.path.append('E:\SSL\ssl_detection-master/detection')
 import argparse
 import os
 import warnings
@@ -35,7 +39,7 @@ from config import finalize_configs
 from data import get_train_dataflow_w_unlabeled
 from modeling.generalized_stac_rcnn import ResNetFPNModel, ResNetC4Model
 from utils.stac_helper import PathLog
-
+from tensorpack.utils import logger
 from FasterRCNN.eval import EvalCallback
 
 try:
@@ -45,6 +49,7 @@ except ImportError:
 
 if __name__ == '__main__':
   mp.set_start_method('spawn')
+  #--logdir=../log/STAC --simple_path --pseudo_path ../pseudo --config BACKBONE.WEIGHTS=../ImageNet-R50-AlignPadding.npz DATA.BASEDIR=E:/fjj/SeaShips_SMD DATA.TRAIN="('voc_cocostylelabel0',)" DATA.VAL="('voc_cocostyletest1283',)" DATA.UNLABEL="('voc_cocostyleunlabel0',)" MODE_MASK=False PREPROC.MAX_SIZE=1000 FRCNN.BATCH_PER_IM=256 TRAIN.EVAL_PERIOD=10 TRAIN.LR_SCHEDULE=[7500,15000,20000] TRAIN.GAMMA=0.3 TRAIN.NUM_GPUS=1 TRAIN.AUGTYPE_LAB='default' TRAIN.AUGTYPE='strong' TRAIN.CONFIDENCE=0.9 TRAIN.WU=2
   parser = argparse.ArgumentParser()
   parser.add_argument(
       '--load',
@@ -95,7 +100,7 @@ if __name__ == '__main__':
     register_voc(cfg.DATA.BASEDIR)  # add VOC datasets to the registry
   except:
     logger.warning('VOC does not find!')
-  register_coco(cfg.DATA.BASEDIR)  # add COCO datasets to the registry
+  #register_coco(cfg.DATA.BASEDIR)  # add COCO datasets to the registry
 
   # Setup logging ...
   is_horovod = cfg.TRAINER == 'horovod'
@@ -119,7 +124,7 @@ if __name__ == '__main__':
   warmup_end_epoch = cfg.TRAIN.WARMUP * 1. / stepnum
   lr_schedule = [(int(warmup_end_epoch + 0.5), cfg.TRAIN.BASE_LR)]
 
-  factor = 8. / cfg.TRAIN.NUM_GPUS
+  factor = 2. / cfg.TRAIN.NUM_GPUS
   for idx, steps in enumerate(cfg.TRAIN.LR_SCHEDULE[:-1]):
     mult = cfg.TRAIN.GAMMA**(idx + 1)
     lr_schedule.append((steps * factor // stepnum, cfg.TRAIN.BASE_LR * mult))
@@ -148,7 +153,7 @@ if __name__ == '__main__':
       ThroughputTracker(samples_per_step=cfg.TRAIN.NUM_GPUS),
       EstimatedTimeLeft(median=True),
       SessionRunTimeout(60000),  # 1 minute timeout
-      GPUUtilizationTracker(),
+      #GPUUtilizationTracker(),
       PathLog(args.logdir + '\nPseudo path: {}'.format(pseudo_path))
   ]
   # if the main model is starts from a meaningful point, we eval at start.
@@ -177,7 +182,7 @@ if __name__ == '__main__':
       session_init = SmartInit(args.load, ignore_mismatch=True)
     else:
       session_init = SmartInit(cfg.BACKBONE.WEIGHTS)
-
+  logger.info('max_epoch:%f'%(cfg.TRAIN.LR_SCHEDULE[-1] * factor // stepnum))
   if args.resume:
     traincfg = AutoResumeTrainConfig(
         model=MODEL,

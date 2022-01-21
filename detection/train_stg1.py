@@ -16,6 +16,10 @@
 # pylint: disable=redefined-outer-name
 # pylint: disable=redefined-builtin
 # pylint: disable=unused-variable
+import sys
+sys.path.append('E:\SSL\ssl_detection-master/third_party\FasterRCNN')
+sys.path.append('E:\SSL\ssl_detection-master/third_party/auto_augment')
+sys.path.append('E:\SSL\ssl_detection-master/detection')
 import argparse
 import os
 import pdb
@@ -27,7 +31,7 @@ from tensorpack import *
 from tensorpack.tfutils import collect_env_info
 from tensorpack.tfutils.common import get_tf_version_tuple
 from tensorpack.callbacks import JSONWriter
-
+from tensorpack.utils import logger
 from config import config as cfg
 from config import finalize_configs
 from data import get_train_dataflow
@@ -36,7 +40,7 @@ from dataset import register_coco, register_voc
 from FasterRCNN.eval import EvalCallback
 from FasterRCNN.modeling.generalized_rcnn import ResNetC4Model, ResNetFPNModel
 from utils.stac_helper import PathLog
-
+#import logging
 try:
   import horovod.tensorflow as hvd
 except ImportError:
@@ -44,8 +48,20 @@ except ImportError:
 
 
 if __name__ == '__main__':
+  print(os.getcwd())
+  #sys.exit(1)
   mp.set_start_method('spawn')
   parser = argparse.ArgumentParser()
+  # --logdir =../ log --simple_path --config
+  # BACKBONE.WEIGHTS =../ImageNet-R50-AlignPadding.npz
+  # DATA.BASEDIR = E:/fjj/SeaShips_SMD
+  # DATA.TRAIN = "('voc_cocostylelabel0',)"
+  # DATA.VAL = "('voc_cocostyletest1283',)"
+  # PREPROC.MAX_SIZE = 1000
+  # TRAIN.EVAL_PERIOD = 10
+  # TRAIN.LR_SCHEDULE = [7500, 10000]
+  # TRAIN.NUM_GPUS = 1
+  # TRAIN.AUGTYPE_LAB = default
   parser.add_argument(
       '--load',
       help='Load a model to start training from. It overwrites BACKBONE.WEIGHTS'
@@ -93,8 +109,8 @@ if __name__ == '__main__':
   try:
     register_voc(cfg.DATA.BASEDIR)  # add VOC datasets to the registry
   except:
-    logger.warning('VOC does not find!')
-  register_coco(cfg.DATA.BASEDIR)  # add COCO datasets to the registry
+    logger.warn('VOC does not find!')
+  #register_coco(cfg.DATA.BASEDIR)  # add COCO datasets to the registry
 
   # Setup logging ...
   is_horovod = cfg.TRAINER == 'horovod'
@@ -117,7 +133,9 @@ if __name__ == '__main__':
   warmup_end_epoch = cfg.TRAIN.WARMUP * 1. / stepnum
   lr_schedule = [(int(warmup_end_epoch + 0.5), cfg.TRAIN.BASE_LR)]
 
-  factor = 8. / cfg.TRAIN.NUM_GPUS
+  factor = 2. / cfg.TRAIN.NUM_GPUS#8. / cfg.TRAIN.NUM_GPUS
+  #cfg.TRAIN.LR_SCHEDULE[-1] * factor // stepnum
+
   for idx, steps in enumerate(cfg.TRAIN.LR_SCHEDULE[:-1]):
     mult = 0.1**(idx + 1)
     lr_schedule.append((steps * factor // stepnum, cfg.TRAIN.BASE_LR * mult))
@@ -143,7 +161,7 @@ if __name__ == '__main__':
       ThroughputTracker(samples_per_step=cfg.TRAIN.NUM_GPUS),
       EstimatedTimeLeft(median=True),
       SessionRunTimeout(60000),  # 1 minute timeout
-      GPUUtilizationTracker(),
+      #GPUUtilizationTracker(),
       PathLog(args.logdir)
   ]
   if cfg.TRAIN.EVAL_PERIOD > 0:

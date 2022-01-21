@@ -18,14 +18,14 @@ from tensorpack.utils import fs, logger
 from .dataset import DatasetRegistry, register_balloon
 from .config import config as cfg
 from .config import finalize_configs
-from .data import get_eval_dataflow, get_train_dataflow
-from .eval import DetectionResult, multithread_predict_dataflow, predict_image
+from .data import get_eval_dataflow, get_train_dataflow,get_eval_dataflow_withname
+from .eval import DetectionResult, multithread_predict_dataflow, predict_image,multithread_predict_dataflow_im
 from .modeling.generalized_rcnn import ResNetC4Model, ResNetFPNModel
 from .viz import (draw_annotation, draw_final_outputs, draw_predictions,
                  draw_proposal_recall, draw_final_outputs_blackwhite)
 from .utils import custom
 import pdb
-
+import pickle
 
 def collect_samples(model,
                     model_path,
@@ -120,9 +120,10 @@ def do_visualize(model, model_path, nr_visualize=100, output_dir='output'):
               'output/labels',
           ]))
 
-  if os.path.isdir(output_dir):
-    shutil.rmtree(output_dir)
-  fs.mkdir_p(output_dir)
+  if not os.path.isdir(output_dir):
+    fs.mkdir_p(output_dir)
+    #shutil.rmtree(output_dir)
+
   with tqdm.tqdm(total=nr_visualize) as pbar:
     for idx, dp in itertools.islice(enumerate(df), nr_visualize):
       img, gt_boxes, gt_labels = dp['image'], dp['gt_boxes'], dp['gt_labels']
@@ -157,7 +158,7 @@ def do_visualize(model, model_path, nr_visualize=100, output_dir='output'):
 def do_evaluate(pred_config, output_file):
   num_tower = max(cfg.TRAIN.NUM_GPUS, 1)
   graph_funcs = MultiTowerOfflinePredictor(pred_config, list(
-      range(num_tower))).get_predictors()
+      range(num_tower))).get_predictors()#构建模型
 
   for dataset in cfg.DATA.VAL:
     logger.info('Evaluating {} ...'.format(dataset))
@@ -165,10 +166,36 @@ def do_evaluate(pred_config, output_file):
         get_eval_dataflow(dataset, shard=k, num_shards=num_tower)
         for k in range(num_tower)
     ]
+    # get_eval_dataflow_withname
     all_results = multithread_predict_dataflow(dataflows, graph_funcs)
+    #imOutputDir=os.path.split(output_file)[0]
+    #all_results = multithread_predict_dataflow_im(dataflows, graph_funcs,imOutputDir)
+
     output = output_file + '-' + dataset
     DatasetRegistry.get(dataset).eval_inference_results(all_results, output)
 
+def do_evaluate_im(pred_config, output_file):
+  num_tower = max(cfg.TRAIN.NUM_GPUS, 1)
+  graph_funcs = MultiTowerOfflinePredictor(pred_config, list(
+      range(num_tower))).get_predictors()#构建模型
+
+  for dataset in cfg.DATA.VAL:
+    logger.info('Evaluating {} ...'.format(dataset))
+    dataflows = [
+        get_eval_dataflow_withname(dataset, shard=k, num_shards=num_tower)
+        for k in range(num_tower)
+    ]
+
+    #all_results = multithread_predict_dataflow(dataflows, graph_funcs)
+    imOutputDir=os.path.split(output_file)[0]
+    all_results = multithread_predict_dataflow_im(dataflows, graph_funcs,imOutputDir)
+    with open(os.path.splitext(output_file)[0]+'.pkl','wb') as f:
+        pickle.dump(all_results,f)
+    # with open(os.path.splitext(output_file)[0] + '.pkl', 'rb') as f:
+    #     all_results=pickle.load(f)
+    #np.save(os.path.splitext(output_file)[0]+'.npz',all_results)
+    output = output_file + '-' + dataset
+    DatasetRegistry.get(dataset).eval_inference_results(all_results, output)
 
 def do_predict(pred_func, input_file):
   img = cv2.imread(input_file, cv2.IMREAD_COLOR)

@@ -25,7 +25,7 @@ import json
 import os
 
 #assert 'COCODIR' in os.environ, 'Set COCODIR in bash'
-DATA_DIR = os.environ['COCODIR']
+DATA_DIR = 'E:/fjj/SeaShips_SMD'#os.environ['COCODIR']
 
 
 def prepare_coco_data(seed=1, percent=10.0, version=2017):
@@ -44,9 +44,9 @@ def prepare_coco_data(seed=1, percent=10.0, version=2017):
     new_anno = {}
     new_anno['images'] = images
     new_anno['annotations'] = annotations
-    new_anno['licenses'] = anno['licenses']
+    #new_anno['licenses'] = anno['licenses']
     new_anno['categories'] = anno['categories']
-    new_anno['info'] = anno['info']
+    # new_anno['info'] = anno['info']
     path = '{}/{}'.format(COCOANNODIR, 'semi_supervised')
     if not os.path.exists(path):
       os.mkdir(path)
@@ -60,14 +60,14 @@ def prepare_coco_data(seed=1, percent=10.0, version=2017):
         name, len(images), len(annotations)))
 
   np.random.seed(seed)
-  COCOANNODIR = os.path.join(DATA_DIR, 'annotations')
+  COCOANNODIR = DATA_DIR#os.path.join(DATA_DIR, 'annotations')
 
   anno = json.load(open(os.path.join(COCOANNODIR,
-            'instances_train{}.json'.format(version))))
+            'all_instances_cocostyle{}.json'.format(version))))
 
   image_list = anno['images']
-  labeled_tot = int(percent / 100. * len(image_list))
-  labeled_ind = np.random.choice(range(len(image_list)), size=labeled_tot)
+  labeled_tot = int(percent / 100. * len(image_list))#16817
+  labeled_ind = np.random.choice(range(len(image_list)), size=labeled_tot,replace=False)
   labeled_id = []
   labeled_images = []
   unlabeled_images = []
@@ -90,10 +90,10 @@ def prepare_coco_data(seed=1, percent=10.0, version=2017):
       unlabeled_annotations.append(an)
 
   # save labeled and unlabeled
-  save_name = 'instances_train{version}.{seed}@{tot}'.format(
+  save_name = 'all_instances_cocostyle{version}.{seed}@{tot}'.format(
       version=version, seed=seed, tot=int(percent))
   _save_anno(save_name, labeled_images, labeled_annotations)
-  save_name = 'instances_train{version}.{seed}@{tot}-unlabeled'.format(
+  save_name = 'all_instances_cocostyle{version}.{seed}@{tot}-unlabeled'.format(
       version=version, seed=seed, tot=int(percent))
   _save_anno(save_name, unlabeled_images, unlabeled_annotations)
 
@@ -101,9 +101,14 @@ def prepare_coco_data(seed=1, percent=10.0, version=2017):
 if __name__ == '__main__':
 
   parser = argparse.ArgumentParser()
-  parser.add_argument('--percent', type=float, default=10)
-  parser.add_argument('--version', type=int, default=2017)
-  parser.add_argument('--seed', type=int, help='seed', default=1)
+  parser.add_argument('--percent', type=str, default='20')
+  parser.add_argument('--version', type=int, default=2021)
+  parser.add_argument('--seed', type=str, help='seed', default='1,2')
 
   args = parser.parse_args()
-  prepare_coco_data(args.seed, args.percent, args.version)
+  percent_list=[int(p) for p in args.percent.split(',')]
+  seed_list=[int(s) for s in args.seed.split(',')]
+
+  for seed in seed_list:
+    for percent in percent_list:
+      prepare_coco_data(seed, percent, args.version)

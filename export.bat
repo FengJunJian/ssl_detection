@@ -1,0 +1,2 @@
+python detection/predict.py --load ./log00/STAC/model-40000 --config DATA.BASEDIR=E:\fjj\SeaShips_SMD DATA.TRAIN="('voc_cocostyleunlabel0',)" DATA.VAL="('voc_cocostyletest',)" RPN.ANCHOR_SIZES="(8,16,32)" PREPROC.TEST_SHORT_EDGE_SIZE=600 TEST.FRCNN_NMS_THRESH=0.3 TEST.RESULT_SCORE_THRESH=0.100 --output-pb fasterRCNN.pb
+# python -m tf2onnx.convert --input fasterRCNN.pb --inputs image:0[600,1067,3] --inputs-as-nchw image:0 --outputs output/boxes:0,output/scores:0,output/labels:0 --output ./fasterRCNN.onnx --verbose --opset 12

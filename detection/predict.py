@@ -16,6 +16,10 @@
 # pylint: disable=redefined-outer-name
 # pylint: disable=redefined-builtin
 # pylint: disable=unused-variable
+import sys
+sys.path.append('E:\SSL\ssl_detection-master/third_party\FasterRCNN')
+sys.path.append('E:\SSL\ssl_detection-master/third_party/auto_augment')
+sys.path.append('E:\SSL\ssl_detection-master/detection')
 import argparse
 import collections
 import itertools
@@ -49,8 +53,8 @@ from FasterRCNN.eval import DetectionResult, multithread_predict_dataflow, predi
 from FasterRCNN.modeling.generalized_rcnn import ResNetFPNModel, ResNetC4Model
 from FasterRCNN.viz import draw_final_outputs, draw_predictions
 from FasterRCNN.utils import custom
-from FasterRCNN.predict import do_evaluate, do_predict, do_visualize
-
+from FasterRCNN.predict import do_evaluate, do_predict, do_visualize,do_evaluate_im
+from FasterRCNN.common import CustomResize, clip_boxes
 
 def predict_unlabeled(model,
                       model_path,
@@ -58,7 +62,7 @@ def predict_unlabeled(model,
                       output_dir='output_patch_samples'):
   """Predict the pseudo label information of unlabeled data."""
 
-  assert cfg.EVAL.PSEUDO_INFERENCE, 'set cfg.EVAL.PSEUDO_INFERENCE=True'
+  #assert cfg.EVAL.PSEUDO_INFERENCE, 'set cfg.EVAL.PSEUDO_INFERENCE=True'
   df, dataset_size = get_eval_unlabeled_dataflow(
       cfg.DATA.TRAIN, return_size=True)
   df.reset_state()
@@ -96,8 +100,34 @@ def predict_unlabeled(model,
   with tqdm.tqdm(total=nr_visualize) as pbar:
     for idx, dp in itertools.islice(enumerate(df), nr_visualize):
       img, img_id = dp  # dp['image'], dp['img_id']
-      rpn_boxes, rpn_scores, all_scores, \
-          final_boxes, final_scores, final_labels = pred(img)
+      orig_shape = img.shape[:2]
+      #if not cfg.EVAL.PSEUDO_INFERENCE:
+      # added upon original package by STAC
+      resizer = CustomResize(cfg.PREPROC.TEST_SHORT_EDGE_SIZE,
+                             cfg.PREPROC.MAX_SIZE)
+      resized_img = resizer.augment(img)
+
+      scale = np.sqrt(resized_img.shape[0] * 1.0 / img.shape[0] *
+                      resized_img.shape[1] / img.shape[1])
+      res = pred(resized_img)
+      if len(res) <= 4:
+          # boxes, probs, labels, *masks = res
+        final_boxes, final_scores, final_labels, *masks = res
+      else:
+          # zizhaoz: support all results returns
+          rpn_boxes, rpn_scores, all_scores, final_boxes, final_scores, final_labels, *masks = res
+      #rpn_boxes, rpn_scores, all_scores, final_boxes, final_scores, final_labels = pred(img)
+
+      keep_inds=np.where(np.bitwise_and((rpn_boxes[:, 2] - rpn_boxes[:, 0])>0, (rpn_boxes[:, 3] - rpn_boxes[:, 1])>0))[0]
+      rpn_boxes=rpn_boxes[keep_inds]
+      all_scores=all_scores[keep_inds]
+      rpn_scores=rpn_scores[keep_inds]
+      final_boxes = final_boxes / scale
+      rpn_boxes = rpn_boxes/scale
+      # boxes are already clipped inside the graph, but after the floating point scaling, this may not be true any more.
+      final_boxes = clip_boxes(final_boxes, orig_shape)
+      rpn_boxes = clip_boxes(rpn_boxes, orig_shape)
+      #rpn_areas=(rpn_boxes[:,2]-rpn_boxes[:,0])*(rpn_boxes[:,3]-rpn_boxes[:,1])
       outs = {
           'proposals_boxes': rpn_boxes,  # (?,4)
           'proposals_scores': rpn_scores,  # (?,)
@@ -105,9 +135,10 @@ def predict_unlabeled(model,
           'scores': final_scores,
           'labels': final_labels
       }
+      ###
       ratios = [10, 10]  # [top 20% as background, bottom 20% as background]
       bg_ind, fg_ind = custom.find_bg_and_fg_proposals(
-          all_scores, ratios=ratios)
+          all_scores, ratios=ratios)#前景、背景处理
 
       bg_viz = draw_predictions(img, rpn_boxes[bg_ind], all_scores[bg_ind])
 
@@ -129,7 +160,7 @@ def predict_unlabeled(model,
   logger.info('Write {} samples to {}'.format(nr_visualize, output_dir))
 
   ## Parallel inference the whole unlabled data
-  pseudo_preds = collections.defaultdict(list)
+  pseudo_preds = collections.defaultdict(list)#伪标注
 
   num_tower = max(cfg.TRAIN.NUM_GPUS, 1)
   graph_funcs = MultiTowerOfflinePredictor(predcfg, list(
@@ -190,9 +221,14 @@ def do_evaluate_unlabeled(pred_config, output_file, reuse=True):
 
 
 if __name__ == '__main__':
+###eval
+  # --evaluate eval.json --load ../log/model-20000 --config DATA.BASEDIR=E:\fjj\SeaShips_SMD DATA.TRAIN="('voc_cocostyleunlabel0',)" DATA.VAL="('voc_cocostyletest',)" RPN.ANCHOR_SIZES="(8,16,32)" PREPROC.TEST_SHORT_EDGE_SIZE=600 TEST.FRCNN_NMS_THRESH=0.3 TEST.RESULT_SCORE_THRESH=0.100
+
+###generate pseudo label
+# --predict_unlabeled ../pseudo --load ../log/model-20000 --visualize --config DATA.BASEDIR=E:\fjj\SeaShips_SMD DATA.TRAIN="('voc_cocostyleunlabel0',)" DATA.VAL="('voc_cocostyletest',)" RPN.ANCHOR_SIZES="(8,16,32)" PREPROC.TEST_SHORT_EDGE_SIZE=600 TEST.FRCNN_NMS_THRESH=0.3 TEST.RESULT_SCORE_THRESH=0.1
   parser = argparse.ArgumentParser()
   parser.add_argument(
-      '--load', help='load a model for evaluation.', required=True)
+      '--load', help='load a model for evaluation.', required=False,default='log00/STAC/model-40000')
   parser.add_argument(
       '--visualize', action='store_true', help='visualize intermediate results')
   parser.add_argument(
@@ -225,7 +261,7 @@ if __name__ == '__main__':
     register_voc(cfg.DATA.BASEDIR)  # add VOC datasets to the registry
   except NotImplementedError:
     logger.warning('VOC does not find!')
-  register_coco(cfg.DATA.BASEDIR)  # add COCO datasets to the registry
+  # register_coco(cfg.DATA.BASEDIR)  # add COCO datasets to the registry
   MODEL = ResNetFPNModel() if cfg.MODE_FPN else ResNetC4Model()
 
   if not tf.test.is_gpu_available():
@@ -238,8 +274,8 @@ if __name__ == '__main__':
     cfg.TEST.RESULT_SCORE_THRESH = cfg.TEST.RESULT_SCORE_THRESH_VIS
 
   # let the output has the same path logic as checkpoint
-  if args.predict_unlabeled:
-    output_dir = args.predict_unlabeled
+  output_dir = args.predict_unlabeled
+  if args.predict_unlabeled:#预测无标注样本
     predict_unlabeled(MODEL, args.load, output_dir=output_dir)
 
   if args.visualize:
@@ -252,23 +288,33 @@ if __name__ == '__main__':
         output_names=MODEL.get_inference_tensor_names()[1])
 
     if args.output_pb:
-      ModelExporter(predcfg).export_compact(args.output_pb, optimize=False)
-    elif args.output_serving:
-      ModelExporter(predcfg).export_serving(args.output_serving, optimize=False)
+      from tensorpack.tfutils.common import get_tensors_by_names
+      exportModel=ModelExporter(predcfg)
+      print(exportModel.config.input_names,exportModel.config.output_names)
+      #get_tensors_by_names(exportModel.config.input_names)
+        # input_tensors = get_tensors_by_names(config.input_names)
+        # output_tensors = get_tensors_by_names(config.output_names)
+      exportModel.export_compact(args.output_pb, optimize=True)#['image'] ['output/boxes', 'output/scores', 'output/labels']
 
-    if args.predict:
-      predictor = OfflinePredictor(predcfg)
-      for image_file in args.predict:
-        do_predict(predictor, image_file)
-    elif args.evaluate:
-      assert args.evaluate.endswith('.json'), args.evaluate
-      do_evaluate(predcfg, args.evaluate)
-    elif args.eval_unlabeled:
-      assert args.eval_unlabeled.endswith('.json'), args.eval_unlabeled
-      do_evaluate_unlabeled(predcfg, args.eval_unlabeled)
-    elif args.benchmark:
-      df = get_eval_dataflow(cfg.DATA.VAL[0])
-      df.reset_state()
-      predictor = OfflinePredictor(predcfg)
-      for _, img in enumerate(tqdm.tqdm(df, total=len(df), smoothing=0.5)):
-        predict_image(img[0], predictor)
+      # ModelExporter(predcfg).export_compact("fasterRCNN", optimize=True)
+    elif args.output_serving:
+      ModelExporter(predcfg).export_serving(args.output_serving)
+      # ModelExporter(predcfg).export_serving(args.output_serving, optimize=False)
+    if True:
+        if args.predict:
+          predictor = OfflinePredictor(predcfg)
+          for image_file in args.predict:
+            do_predict(predictor, image_file)
+        elif args.evaluate:
+          assert args.evaluate.endswith('.json'), args.evaluate
+          do_evaluate_im(predcfg, args.evaluate)
+          #do_evaluate(predcfg, args.evaluate)#multithread_predict_dataflow
+        elif args.eval_unlabeled:
+          assert args.eval_unlabeled.endswith('.json'), args.eval_unlabeled
+          do_evaluate_unlabeled(predcfg, args.eval_unlabeled)
+        elif args.benchmark:
+          df = get_eval_dataflow(cfg.DATA.VAL[0])
+          df.reset_state()
+          predictor = OfflinePredictor(predcfg)
+          for _, img in enumerate(tqdm.tqdm(df, total=len(df), smoothing=0.5)):
+            predict_image(img[0], predictor)

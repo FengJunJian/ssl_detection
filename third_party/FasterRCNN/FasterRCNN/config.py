@@ -110,7 +110,7 @@ _C.MODE_MASK = False  # Faster R-CNN or Mask R-CNN
 _C.MODE_FPN = True
 
 # dataset -----------------------
-_C.DATA.BASEDIR = '/path/to/your/DATA/DIR'
+_C.DATA.BASEDIR = 'E:/fjj/SeaShips_SMD\semi_supervised'
 # All available dataset names are defined in `dataset/coco.py:register_coco`.
 # All TRAIN dataset will be concatenated for training.
 _C.DATA.TRAIN = ('coco_train2017',)  # i.e. trainval35k
@@ -128,7 +128,7 @@ _C.DATA.ABSOLUTE_COORD = True
 # Number of data loading workers.
 # In case of horovod training, this is the number of workers per-GPU (so you may want to use a smaller number).
 # Set to 0 to disable parallel data loading
-_C.DATA.NUM_WORKERS = 24
+_C.DATA.NUM_WORKERS = 0
 
 # backbone ----------------------
 _C.BACKBONE.WEIGHTS = ''
@@ -304,7 +304,7 @@ def finalize_configs(is_training):
                   (list, tuple)) and train_scales[1] - train_scales[0] > 100:
       # don't autotune if augmentation is on
       os.environ['TF_CUDNN_USE_AUTOTUNE'] = '0'
-    os.environ['TF_AUTOTUNE_THRESHOLD'] = '1'
+    #os.environ['TF_AUTOTUNE_THRESHOLD'] = '1'
     assert _C.TRAINER in ['horovod', 'replicated'], _C.TRAINER
 
     lr = _C.TRAIN.LR_SCHEDULE
@@ -334,7 +334,7 @@ def finalize_configs(is_training):
         'GPUs, but found {} GPUs').format(ngpu)
   else:
     # autotune is too slow for inference
-    os.environ['TF_CUDNN_USE_AUTOTUNE'] = '0'
+    #os.environ['TF_CUDNN_USE_AUTOTUNE'] = '0'
     ngpu = get_num_gpu()
 
   if _C.TRAIN.NUM_GPUS is None:

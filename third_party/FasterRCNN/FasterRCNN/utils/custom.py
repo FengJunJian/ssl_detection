@@ -38,3 +38,5 @@ def find_bg_and_fg_proposals(scores, ratios=(0.1, 0.1)):
   fg_ind = sorted_ind[-n2:]  # take the top k background regions
 
   return bg_ind, fg_ind
+
+

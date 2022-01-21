@@ -473,3 +473,32 @@ def get_eval_dataflow(name, shard=0, num_shards=1):
   # Evaluation itself may be multi-threaded, therefore don't add prefetch here.
   return ds
 
+def get_eval_dataflow_withname(name, shard=0, num_shards=1):
+  """
+    Args:
+        name (str): name of the dataset to evaluate
+        shard, num_shards: to get subset of evaluation data
+  """
+  roidbs = DatasetRegistry.get(name).inference_roidbs()
+  logger.info("Found {} images for inference.".format(len(roidbs)))
+
+  num_imgs = len(roidbs)
+  img_per_shard = num_imgs // num_shards
+  img_range = (shard * img_per_shard, (shard + 1) *
+               img_per_shard if shard + 1 < num_shards else num_imgs)
+
+  # no filter for training
+  ds = DataFromListOfDict(roidbs[img_range[0]:img_range[1]],
+                          ["file_name", "image_id","file_name"])
+  ds = MapData(ds, lambda d: [d[0], d[1], d[0]])
+  def f(fname):
+    im = cv2.imread(fname, cv2.IMREAD_COLOR)
+    assert im is not None, fname
+    return im
+  def f2(fname):
+    basename=os.path.basename(fname)
+    return basename
+  dt = MapDataComponent(ds, f, 0)
+  dt = MapDataComponent(dt, f2, 2)
+  # Evaluation itself may be multi-threaded, therefore don't add prefetch here.
+  return dt

@@ -512,7 +512,7 @@ def get_train_dataflow_w_unlabeled(load_path):
           DatasetRegistry.get(x).training_roidbs() for x in cfg.DATA.TRAIN))
   print_class_histogram(roidbs)
 
-  if "VOC" in cfg.DATA.TRAIN[0]:
+  if "voc" in cfg.DATA.TRAIN[0]:
     roidbs_u = list(
         itertools.chain.from_iterable(
             DatasetRegistry.get(x).training_roidbs() for x in cfg.DATA.UNLABEL))
